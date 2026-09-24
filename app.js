@@ -25,7 +25,7 @@ function prepareDragon(){
   const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return null;
   if(!soundContext)soundContext=new Audio();
   if(soundContext.state!=='running')soundContext.resume().catch(()=>{});
-  if(!soundLoad)soundLoad=fetch('dracarys.wav?v=1').then(r=>{if(!r.ok)throw new Error('Audio unavailable');return r.arrayBuffer();}).then(b=>soundContext.decodeAudioData(b)).catch(()=>{soundLoad=null;return null;});
+  if(!soundLoad)soundLoad=fetch('dracarys.wav?v=2').then(r=>{if(!r.ok)throw new Error('Audio unavailable');return r.arrayBuffer();}).then(b=>soundContext.decodeAudioData(b)).catch(()=>{soundLoad=null;return null;});
   return soundLoad;
  }catch{return null;}
 }
