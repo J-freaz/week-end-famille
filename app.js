@@ -1,167 +1,136 @@
 'use strict';
-const $ = id => document.getElementById(id);
-const days = [
-  { label: 'Samedi 24 octobre', meals: [
-    { id: 'sat-dinner', label: 'Dîner · pendant le jeu', detail: 'Proposition du groupe · choix des pizzas à préciser.' }
-  ] },
-  { label: 'Dimanche 25 octobre', meals: [
-    { id: 'sun-breakfast', label: 'Petit-déjeuner', detail: 'Suggestion pour la liste · avec lait et café, à adapter.' },
-    { id: 'sun-lunch', label: 'Déjeuner · hors courses', fixed: 'Restaurant', detail: 'L’Auberge des Roux, prévue dans les échanges.' },
-    { id: 'sun-dinner', label: 'Dîner', detail: 'Proposition du groupe · nombre de convives à confirmer.' }
-  ] },
-  { label: 'Lundi 26 octobre', meals: [
-    { id: 'mon-breakfast', label: 'Petit-déjeuner', detail: 'Suggestion pour la liste · avec lait et café, à adapter.' }
-  ] }
+const $=id=>document.getElementById(id);
+const BACKEND='https://courses-week-end-famille.j-freaz91540.chatgpt.site';
+const API=location.origin===BACKEND?'':BACKEND;
+const categories=['Fruits et légumes','Frais','Viandes et poissons','Surgelés','Épicerie','Boulangerie','Boissons','Autres'];
+const days=[
+ {label:'Samedi 24 octobre',meals:[{id:'sat-dinner',label:'Dîner · pendant le jeu'}]},
+ {label:'Dimanche 25 octobre',meals:[{id:'sun-breakfast',label:'Petit-déjeuner'},{id:'sun-lunch',label:'Déjeuner · hors courses',fixed:'Restaurant',detail:'L’Auberge des Roux.'},{id:'sun-dinner',label:'Dîner'}]},
+ {label:'Lundi 26 octobre',meals:[{id:'mon-breakfast',label:'Petit-déjeuner'}]}
 ];
-const groceryPlan = [
-  { id:'pizzas', name:'Pizzas à réchauffer', category:'Surgelés', quantity:n=>`${Math.ceil(n * .7)} pizzas de 400 à 500 g environ`, note:'Samedi soir · garnitures à choisir' },
-  { id:'pain-mie', name:'Pain de mie', category:'Boulangerie', quantity:n=>`${n * 4} tranches`, note:'Dimanche soir · 2 croque-monsieur par personne' },
-  { id:'jambon', name:'Jambon pour les croque-monsieur', category:'Frais', quantity:n=>`${n * 2} tranches`, note:'Dimanche soir · variante sans viande à prévoir si besoin' },
-  { id:'fromage', name:'Fromage pour les croque-monsieur', category:'Frais', quantity:n=>`${n * 4} tranches`, note:'Dimanche soir · 2 tranches par croque-monsieur' },
-  { id:'salade', name:'Salade verte', category:'Fruits et légumes', quantity:n=>`${Math.ceil(n * 60 / 100) * 100} g`, note:'Dimanche soir' },
-  { id:'sauce', name:'Vinaigrette', category:'Épicerie', quantity:n=>`${Math.ceil(n * 15 / 50) * 50} ml`, note:'À apporter si déjà disponible' },
-  { id:'baguettes', name:'Pain pour les petits-déjeuners', category:'Boulangerie', quantity:n=>`${Math.ceil(n * 2 * 100 / 250)} baguettes de 250 g environ`, note:'Total dimanche et lundi · prévoir la conservation' },
-  { id:'beurre', name:'Beurre', category:'Frais', quantity:n=>`${Math.ceil(n * 30 / 250) * 250} g`, note:'Deux petits-déjeuners + croque-monsieur' },
-  { id:'confiture', name:'Confiture', category:'Épicerie', quantity:n=>`${Math.ceil(n * 2 * 20 / 250) * 250} g`, note:'Deux petits-déjeuners' },
-  { id:'lait', name:'Lait', category:'Boissons', quantity:n=>`${Math.ceil(n * 2 * .2)} L`, note:'Deux petits-déjeuners · type à confirmer' },
-  { id:'cafe', name:'Café', category:'Épicerie', quantity:n=>`${Math.ceil(n * 2 * 10 / 250) * 250} g`, note:'À adapter à la cafetière du logement' },
-  { id:'fruits', name:'Fruits pour les petits-déjeuners', category:'Fruits et légumes', quantity:n=>`${n * 2} pièces`, note:'Total dimanche et lundi · fruits au choix' }
-];
-const state = {
-  people: 10,
-  meals: { 'sat-dinner': 'Pizzas', 'sun-dinner': 'Croque-monsieur et salade', 'sun-breakfast':'Pain, beurre, confiture et fruits', 'mon-breakfast':'Pain, beurre, confiture et fruits' },
-  items: groceryPlan.map(item=>({ ...item, quantity:item.quantity(10), done:false, planned:true }))
+let state=null,busy=false,poll=null,pollRunning=false,selectedQuantity=null,selectedItem=null,selectedMeal=null,actorId='',personId='';
+try{actorId=localStorage.getItem('family-profile-id')||'';personId=actorId;}catch{}
+const number=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3});
+function node(tag,text,className){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;}
+function amount(milli,unit){return number.format(milli/1000)+' '+unit+(['unité','pièce','pizza','tranche','baguette','paquet','boîte'].includes(unit)&&milli>=2000?'s':'');}
+function personName(id){return state?.profiles.find(p=>p.id===id)?.name||'Profil inconnu';}
+function entry(itemId,profileId=personId){return state?.requests.find(r=>r.item_id===itemId&&r.profile_id===profileId);}
+function requestLabel(r,item){return amount(r.amount_milli,item.unit)+(r.amount_milli>0?(r.variant?' · '+r.variant:item.choice_required?' · choix à préciser':''):'');}
+function completeRequest(r,item){return !!r&&!(item.choice_required&&r.amount_milli>0&&!r.variant_key);}
+function choiceGroups(item){
+ const groups=new Map();for(const r of state.requests.filter(r=>r.item_id===item.id&&r.amount_milli>0)){
+  const key=r.variant_key||'',label=r.variant||(item.choice_required?'Choix à préciser':'Sans préférence');
+  if(!groups.has(key))groups.set(key,{label,total:0,people:[]});const g=groups.get(key);g.total+=r.amount_milli;g.people.push(`${personName(r.profile_id)} (${amount(r.amount_milli,item.unit)})`);
+ }return [...groups.values()].sort((a,b)=>a.label.localeCompare(b.label,'fr'));
+}
+function rememberActor(){try{localStorage.setItem('family-profile-id',actorId);}catch{}}
+async function api(path,method='GET',data){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+ try{
+  const response=await fetch(API+path,{method,credentials:API?'omit':'same-origin',cache:'no-store',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,signal:controller.signal});
+  let result;try{result=await response.json();}catch{throw new Error('Le service de sauvegarde ne répond pas correctement. Réessayez.');}
+  if(!response.ok){const e=new Error(result.error||'La modification n’a pas pu être enregistrée.');e.status=response.status;throw e;}return result;
+ }catch(e){if(e.name==='AbortError'||e instanceof TypeError)throw new Error('Connexion interrompue. Votre saisie est conservée : réessayez.');throw e;}
+ finally{clearTimeout(timeout);}
+}
+function connected(ok){$('connection').textContent=ok?'Liste commune · les quantités sont enregistrées pour toute la famille.':'Connexion interrompue · la dernière liste chargée peut être incomplète.';$('connection').classList.toggle('offline',!ok);$('retry').hidden=ok;}
+function renderProfiles(){
+ const profiles=state.profiles;if(!profiles.some(p=>p.id===actorId)){actorId='';personId='';}
+ if(!profiles.some(p=>p.id===personId))personId=actorId;
+ for(const [id,value,placeholder] of [['actor',actorId,'Choisir mon prénom'],['person',personId,'Choisir une personne']]){
+  const select=$(id),empty=node('option',placeholder);empty.value='';select.replaceChildren(empty,...profiles.map(p=>{const o=node('option',p.name);o.value=p.id;return o;}));select.value=value;
+ }
+ $('person').disabled=!actorId;$('createProfile').disabled=false;
+ $('needsTitle').textContent=personId?`Les quantités de ${personName(personId)}`:'Les quantités souhaitées';
+ $('personHint').textContent=!actorId?'Choisissez votre prénom ou créez votre profil pour renseigner vos quantités.':personId!==actorId?`${personName(actorId)}, vous renseignez pour ${personName(personId)}. Le récapitulatif gardera les deux prénoms.`:`Renseignez vos besoins pour tout le week-end. Pour un proche, choisissez son prénom dans « Je renseigne pour ».`;
+}
+function renderMeals(){
+ $('days').replaceChildren(...days.map(day=>{
+  const card=node('article',undefined,'day');card.append(node('h3',day.label));
+  for(const slot of day.meals){const saved=state.meals.find(m=>m.id===slot.id),meal=node('div',undefined,'meal');meal.append(node('div',slot.label,'kind'),node('strong',slot.fixed||saved?.title||'À décider'));if(slot.detail)meal.append(node('p',slot.detail,'muted'));
+   if(state.isAdmin&&!slot.fixed){const b=node('button','Modifier','secondary');b.setAttribute('aria-label',`Modifier : ${day.label}, ${slot.label}`);b.onclick=()=>{selectedMeal={...saved};$('mealTitle').textContent=`${day.label} · ${slot.label}`;$('mealName').value=saved.title;$('mealError').hidden=true;$('mealDialog').showModal();};meal.append(b);}card.append(meal);
+  }return card;
+ }));
+}
+function renderNeeds(){
+ $('needsItems').replaceChildren();
+ if(!state.items.length){$('needsItems').append(node('p','L’organisateur peut ajouter les premiers articles.','emptybox'));return;}
+ for(const category of categories){const items=state.items.filter(i=>i.category===category);if(!items.length)continue;const list=node('div',undefined,'list');list.append(node('h3',category));
+  for(const item of items){const saved=entry(item.id),row=node('div',undefined,'request-row'),description=node('div');description.append(node('strong',item.name),node('small',saved?`Demandé : ${requestLabel(saved,item)}`:'Pas encore renseigné'));if(item.note)description.append(node('small',item.note));const b=node('button',saved?'Modifier':'Renseigner','secondary');b.setAttribute('aria-label',`Quantité souhaitée : ${item.name}`);b.onclick=()=>openQuantity(item);row.append(description,b);list.append(row);}$('needsItems').append(list);
+ }
+}
+function renderRecap(){
+ const completed=state.profiles.filter(p=>state.items.length&&state.items.every(i=>completeRequest(entry(i.id,p.id),i))).length;
+ $('recapSummary').textContent=`${state.profiles.length} profil${state.profiles.length>1?'s':''} créé${state.profiles.length>1?'s':''} · ${completed} entièrement renseigné${completed>1?'s':''}. Base initiale : 10 personnes, à confirmer.`;
+ $('recapPeople').replaceChildren();if(!state.profiles.length){$('recapPeople').append(node('p','Aucun profil créé pour le moment.','emptybox'));return;}
+ for(const p of state.profiles){const entries=state.requests.filter(r=>r.profile_id===p.id),card=node('article',undefined,'recap-card');card.append(node('h3',p.name),node('p',`${state.items.filter(i=>completeRequest(entry(i.id,p.id),i)).length} / ${state.items.length} articles renseignés`,'muted'));
+  if(p.created_by&&p.created_by!==p.id)card.append(node('small',`Profil créé par ${personName(p.created_by)}`));
+  if(!entries.length)card.append(node('p','Quantités en attente.','muted'));
+  const ul=node('ul');for(const item of state.items){const r=entries.find(x=>x.item_id===item.id);if(!r)continue;const li=node('li',`${item.name} : ${requestLabel(r,item)}`);li.append(node('small',`Renseigné par ${personName(r.updated_by)} · ${new Date(r.updated_at).toLocaleString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`));ul.append(li);}card.append(ul);
+  const missing=state.items.filter(i=>!completeRequest(entries.find(r=>r.item_id===i.id),i));if(missing.length)card.append(node('p','En attente : '+missing.map(i=>i.name).join(', ')+'.','muted'));
+  const button=node('button','Renseigner pour '+p.name,'secondary');button.onclick=()=>{if(!actorId){$('status').textContent='Choisissez d’abord votre propre prénom dans « Je suis ».';$('actor').focus();return;}personId=p.id;render();showTab('needs');};card.append(button);$('recapPeople').append(card);
+ }
+}
+function renderShopping(){
+ const positive=state.items.filter(i=>i.total_milli>0),done=positive.filter(i=>i.done).length;
+ $('count').textContent=String(positive.length);$('summary').textContent=`${done} / ${positive.length} articles à acheter cochés`;$('bar').style.width=`${positive.length?done/positive.length*100:0}%`;
+ const pending=state.items.filter(i=>i.response_count<state.profiles.length||!i.response_count||state.requests.some(r=>r.item_id===i.id&&!completeRequest(r,i))).length;
+ $('shoppingMissing').hidden=!pending;$('shoppingMissing').textContent=pending?`${pending} article${pending>1?'s':''} encore incomplet${pending>1?'s':''} : les totaux portent uniquement sur les quantités déjà renseignées. Vérifiez aussi que tous les participants ont un profil.`:'';
+ $('items').replaceChildren();
+ for(const category of categories){const group=state.items.filter(i=>i.category===category);if(!group.length)continue;const list=node('div',undefined,'list');list.append(node('h3',category));
+  for(const item of group){const row=node('div',undefined,`row${item.done?' done':''}`),label=node('label'),check=node('input');check.type='checkbox';check.checked=item.done;check.disabled=!(item.total_milli>0)||state.requests.some(r=>r.item_id===item.id&&!completeRequest(r,item));check.dataset.itemId=item.id;
+   check.onchange=()=>saveCheck(item,check);
+   const description=node('span',item.name);description.append(node('small',item.total_milli===null?'Total en attente':`Total demandé : ${amount(item.total_milli,item.unit)}`,'quantity-total'),node('small',`${item.response_count} / ${state.profiles.length} profils renseignés`));
+   if(item.choice_required||state.requests.some(r=>r.item_id===item.id&&r.variant)){
+    const breakdown=node('span',undefined,'choice-breakdown');for(const g of choiceGroups(item)){breakdown.append(node('strong',`${g.label} : ${amount(g.total,item.unit)}`),node('small',g.people.join(' · ')));}if(breakdown.childNodes.length)description.append(breakdown);
+   }
+   if(item.quantity!=='À définir')description.append(node('small',`Repère pour le groupe : ${item.quantity}`));label.append(check,description);row.append(label);
+   if(state.isAdmin){const edit=node('button','Article','secondary');edit.setAttribute('aria-label','Modifier l’article : '+item.name);edit.onclick=()=>openItem(item);const remove=node('button','×','remove');remove.setAttribute('aria-label','Supprimer '+item.name);remove.onclick=()=>removeItem(item);row.append(edit,remove);}list.append(row);
+  }$('items').append(list);
+ }
+}
+function render(){renderProfiles();renderMeals();renderNeeds();renderRecap();renderShopping();$('add').hidden=!state.isAdmin;$('organizer').hidden=state.isAdmin;$('adminMode').hidden=!state.isAdmin;}
+async function refresh(force=false){if(busy&&!force)return false;try{const latest=await api('/api/state');const changed=JSON.stringify(latest)!==JSON.stringify(state);state=latest;connected(true);$('loadError').hidden=true;if(changed)render();return true;}catch(e){connected(false);$('loadError').textContent=e.message;$('loadError').hidden=false;return false;}}
+function showTab(name){for(const id of ['meals','needs','recap','shopping']){$(id).hidden=id!==name;$(id+'Tab').setAttribute('aria-pressed',String(id===name));}}
+function openQuantity(item){
+ if(!actorId||!personId){$('status').textContent='Choisissez votre prénom avant de renseigner une quantité.';$('actor').focus();return;}
+ const saved=entry(item.id);selectedQuantity={itemId:item.id,profileId:personId,actorId,revision:saved?.revision||0,unit:item.unit};
+ $('quantityVariant').value=saved?.variant||'';$('quantityVariant').required=!!item.choice_required&&(!saved||saved.amount_milli>0);$('variantLabel').textContent=item.choice_required?'Votre choix (sauf si quantité = 0)':'Choix ou préférence (facultatif)';$('sharingHint').hidden=item.unit!=='pizza';
+ const choices=new Set([...(item.unit==='pizza'?['Chèvre','Quatre fromages']:[]),...state.requests.filter(r=>r.item_id===item.id&&r.variant).map(r=>r.variant)]);
+ $('variantSuggestions').replaceChildren(...[...choices].map(c=>{const o=node('option');o.value=c;return o;}));
+ $('quantityTitle').textContent=item.name;$('quantityHint').textContent=`Pour ${personName(personId)} · saisi par ${personName(actorId)}`;$('quantityUnit').textContent=item.unit;$('quantityAmount').value=saved?saved.amount_milli/1000:'';$('quantityError').hidden=true;$('quantityDialog').showModal();$('quantityAmount').focus();
+}
+$('quantityAmount').oninput=()=>{$('quantityVariant').required=!!state?.items.find(i=>i.id===selectedQuantity?.itemId)?.choice_required&&Number($('quantityAmount').value)>0;};
+function error(id,e){$(id).textContent=e.message;$(id).hidden=false;}
+$('quantityForm').onsubmit=async e=>{
+ e.preventDefault();if(busy)return;busy=true;$('quantitySubmit').disabled=true;$('quantityError').hidden=true;
+ try{await api('/api/requests','POST',{...selectedQuantity,amount:$('quantityAmount').value,variant:$('quantityVariant').value});$('quantityDialog').close();await refresh(true);$('status').textContent=`Quantité enregistrée pour ${personName(selectedQuantity.profileId)}. Le total des courses est mis à jour.`;}
+ catch(e){error('quantityError',e);if(e.status===409){await refresh(true);const latest=entry(selectedQuantity.itemId,selectedQuantity.profileId);const item=state.items.find(i=>i.id===selectedQuantity.itemId);if(item){selectedQuantity.revision=latest?.revision||0;selectedQuantity.unit=item.unit;$('quantityUnit').textContent=item.unit;$('quantityError').textContent+=` Valeur actuelle : ${latest?requestLabel(latest,item):'non renseignée'}. Votre saisie est conservée ; vérifiez-la avant d’enregistrer.`;}}}
+ finally{busy=false;$('quantitySubmit').disabled=false;}
 };
-let selectedMeal, selectedItem;
-function node(tag, text, className) {
-  const el = document.createElement(tag);
-  if (text !== undefined) el.textContent = text;
-  if (className) el.className = className;
-  return el;
-}
-function renderMeals() {
-  $('days').replaceChildren(...days.map(day => {
-    const card = node('article', undefined, 'day');
-    card.append(node('h3', day.label));
-    day.meals.forEach(slot => {
-      const id = slot.id, title = slot.fixed || state.meals[id];
-      const meal = node('div', undefined, 'meal');
-      meal.append(node('div', slot.label, 'kind'), node('strong', title || 'À décider', title ? '' : 'empty'), node('p', slot.detail, 'muted'));
-      if (slot.fixed) { card.append(meal); return; }
-      const button = node('button', title ? 'Modifier' : '+ Prévoir ce repas', 'secondary');
-      button.setAttribute('aria-label', `${title ? 'Modifier' : 'Prévoir'} : ${day.label}, ${slot.label}`);
-      button.onclick = () => {
-        selectedMeal = id;
-        $('mealTitle').textContent = `${day.label} · ${slot.label.toLowerCase()}`;
-        $('mealName').value = title || '';
-        $('mealDialog').showModal();
-      };
-      meal.append(button); card.append(meal);
-    });
-    return card;
-  }));
-}
-function showTab(tab) {
-  const meals = tab === 'meals';
-  $('meals').hidden = !meals; $('shopping').hidden = meals;
-  $('mealsTab').setAttribute('aria-pressed', String(meals));
-  $('shoppingTab').setAttribute('aria-pressed', String(!meals));
-}
-function renderItems() {
-  const done = state.items.filter(i => i.done).length;
-  $('count').textContent = String(state.items.length);
-  $('summary').textContent = state.items.length ? `${done} / ${state.items.length} article${state.items.length > 1 ? 's' : ''} acheté${state.items.length > 1 ? 's' : ''}` : 'Aucun article pour le moment.';
-  $('bar').style.width = `${state.items.length ? done / state.items.length * 100 : 0}%`;
-  $('items').replaceChildren();
-  if (!state.items.length) {
-    const empty = node('div', undefined, 'emptybox');
-    empty.append(node('h3', 'La liste attend vos idées'), node('p', 'Ajoutez les ingrédients de vos repas et les petits essentiels du week-end.'));
-    $('items').append(empty); return;
-  }
-  [...$('itemCategory').options].forEach(option => {
-    const group = state.items.filter(i => i.category === option.value);
-    if (!group.length) return;
-    const list = node('div', undefined, 'list'); list.append(node('h3', option.value));
-    group.forEach(item => {
-      const row = node('div', undefined, `row${item.done ? ' done' : ''}`);
-      const label = node('label'); const check = node('input'); check.type = 'checkbox'; check.checked = item.done;
-      check.onchange = () => { item.done = check.checked; row.classList.toggle('done', item.done); updateProgress(); };
-      const description = node('span', item.name); if (item.quantity) description.append(node('small', item.quantity));
-      if (item.note) description.append(node('small', item.note));
-      label.append(check, description);
-      const edit = node('button', 'Modifier', 'secondary');
-      edit.setAttribute('aria-label', `Modifier ${item.name}`);
-      edit.onclick = () => {
-        selectedItem = item.id;
-        $('itemForm').reset();
-        $('itemName').value = item.name; $('itemQty').value = item.quantity; $('itemCategory').value = item.category;
-        $('itemDialogTitle').textContent = 'Modifier une course'; $('itemSubmit').textContent = 'Valider';
-        $('itemHint').hidden = !item.planned;
-        $('itemDialog').showModal();
-      };
-      const remove = node('button', '×', 'remove'); remove.setAttribute('aria-label', `Supprimer ${item.name}`);
-      remove.onclick = () => { state.items = state.items.filter(i => i.id !== item.id); renderItems(); $('add').focus(); };
-      row.append(label, edit, remove); list.append(row);
-    });
-    $('items').append(list);
-  });
-}
-function updateProgress() {
-  const done = state.items.filter(i => i.done).length;
-  $('summary').textContent = `${done} / ${state.items.length} article${state.items.length > 1 ? 's' : ''} acheté${state.items.length > 1 ? 's' : ''}`;
-  $('bar').style.width = `${done / state.items.length * 100}%`;
-}
-function addItem(name, quantity, category) {
-  if (typeof name !== 'string' || !name.trim() || name.length > 100 || typeof quantity !== 'string' || quantity.length > 60 || ![...$('itemCategory').options].some(o => o.value === category)) throw new Error('Article invalide');
-  const item = { id: crypto.randomUUID(), name: name.trim(), quantity: quantity.trim(), category, done: false };
-  state.items.push(item); renderItems(); return item.id;
-}
-$('mealsTab').onclick = () => showTab('meals');
-$('shoppingTab').onclick = () => showTab('shopping');
-$('people').onchange = () => {
-  const n = Number($('people').value);
-  if (!Number.isInteger(n) || n < 1 || n > 99) {
-    $('people').value = state.people;
-    $('status').textContent = 'Indiquez un nombre de personnes entre 1 et 99.';
-    return;
-  }
-  const changed = n !== state.people;
-  state.people = n;
-  $('peopleHelp').textContent = `Base provisoire : ${n} personnes à chacun des quatre repas. Les quantités proposées se recalculent ; les quantités modifiées à la main restent fixes.`;
-  state.items.forEach(item => {
-    if (!item.planned) return;
-    const recipe = groceryPlan.find(p => p.id === item.id);
-    item.quantity = recipe.quantity(n);
-    if (changed) item.done = false;
-  });
-  renderItems();
-  $('status').textContent = changed ? `Quantités recalculées pour ${n} personnes par repas. Les achats de la liste proposée sont à revérifier.` : `Base inchangée : ${n} personnes.`;
+$('createProfile').onclick=()=>{$('profileForm').reset();$('profilePurpose').value=actorId?'other':'self';$('profilePurpose').querySelector('[value="other"]').disabled=!actorId;$('profileError').hidden=true;$('profileDialog').showModal();};
+$('profileForm').onsubmit=async e=>{
+ e.preventDefault();if(busy)return;busy=true;$('profileSubmit').disabled=true;$('profileError').hidden=true;
+ try{const other=$('profilePurpose').value==='other';const result=await api('/api/profiles','POST',{name:$('profileName').value,...(other?{createdBy:actorId}:{})});if(!other){actorId=result.profile.id;rememberActor();}personId=result.profile.id;$('profileDialog').close();await refresh(true);render();showTab('needs');$('status').textContent='Profil créé. Vous pouvez renseigner les quantités.';}
+ catch(e){error('profileError',e);if(e.status===409)await refresh(true);}finally{busy=false;$('profileSubmit').disabled=false;}
 };
-$('add').onclick = () => {
-  selectedItem = undefined; $('itemForm').reset(); $('itemHint').hidden = true;
-  $('itemName').setCustomValidity(''); $('itemDialogTitle').textContent = 'Ajouter une course'; $('itemSubmit').textContent = 'Ajouter';
-  $('itemDialog').showModal();
-};
-document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => button.closest('dialog').close());
-$('mealForm').onsubmit = event => {
-  event.preventDefault(); state.meals[selectedMeal] = $('mealName').value.trim();
-  $('mealDialog').close(); renderMeals(); $('status').textContent = 'Repas modifié dans cet aperçu.';
-};
-$('itemForm').onsubmit = event => {
-  event.preventDefault();
-  if (!$('itemName').value.trim()) { $('itemName').setCustomValidity('Indiquez un article.'); $('itemName').reportValidity(); return; }
-  if (selectedItem) {
-    const item = state.items.find(i => i.id === selectedItem);
-    item.name = $('itemName').value.trim(); item.quantity = $('itemQty').value.trim(); item.category = $('itemCategory').value;
-    item.planned = false; item.done = false; item.note = 'Quantité personnalisée · à ajuster manuellement si l’effectif change';
-    renderItems();
-  } else addItem($('itemName').value, $('itemQty').value, $('itemCategory').value);
-  $('itemDialog').close(); $('status').textContent = selectedItem ? 'Article modifié dans cet aperçu.' : 'Article ajouté dans cet aperçu.';
-};
-$('itemName').oninput = () => $('itemName').setCustomValidity('');
-renderMeals(); renderItems();
-if (document.modelContext?.registerTool) {
-  try {
-    Promise.resolve(document.modelContext.registerTool({ name: 'read_weekend_preview', description: 'Lire les repas et courses de cet aperçu non sauvegardé.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute: () => JSON.parse(JSON.stringify(state)) })).catch(() => {});
-  } catch {}
+$('actor').onchange=()=>{actorId=$('actor').value;personId=actorId;rememberActor();render();};$('person').onchange=()=>{personId=$('person').value||actorId;render();};
+async function saveCheck(item,check){
+ if(busy){check.checked=item.done;return;}busy=true;check.disabled=true;try{await api('/api/items/'+item.id,'PATCH',{done:check.checked,revision:item.revision});await refresh(true);$('status').textContent='État de l’achat enregistré.';}catch(e){check.checked=item.done;$('status').textContent=e.message;await refresh(true);}finally{busy=false;check.disabled=false;}
 }
+function openItem(item){selectedItem=item?{...item}:null;$('itemForm').reset();$('itemError').hidden=true;$('itemDialogTitle').textContent=item?'Modifier un article':'Ajouter un article';$('itemName').value=item?.name||'';$('itemQty').value=item?.quantity==='À définir'?'':item?.quantity||'';$('itemUnit').value=item?.unit||'unité';$('itemUnit').disabled=!!item;$('itemChoiceRequired').checked=!!item?.choice_required;$('unitHint').hidden=!item;$('itemCategory').value=item?.category||categories[0];$('itemDialog').showModal();}
+$('itemForm').onsubmit=async e=>{
+ e.preventDefault();if(busy)return;busy=true;$('itemSubmit').disabled=true;$('itemError').hidden=true;
+ const data={name:$('itemName').value,quantity:$('itemQty').value.trim()||'À définir',category:$('itemCategory').value};
+ try{if(selectedItem)await api('/api/items/'+selectedItem.id,'PATCH',{...data,choice_required:$('itemChoiceRequired').checked,revision:selectedItem.revision});else await api('/api/items','POST',{...data,unit:$('itemUnit').value,choiceRequired:$('itemChoiceRequired').checked});$('itemDialog').close();await refresh(true);$('status').textContent='Article enregistré pour toute la famille.';}
+ catch(e){error('itemError',e);if(e.status===409){await refresh(true);selectedItem={...state.items.find(i=>i.id===selectedItem.id)};}}finally{busy=false;$('itemSubmit').disabled=false;}
+};
+async function removeItem(item){if(busy||!confirm(`Supprimer « ${item.name} » et ses quantités individuelles de la liste ?`))return;busy=true;try{await api('/api/items/'+item.id,'DELETE',{revision:item.revision});await refresh(true);$('status').textContent='Article supprimé.';}catch(e){$('status').textContent=e.message;await refresh(true);}finally{busy=false;}}
+$('mealForm').onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;$('mealSubmit').disabled=true;$('mealError').hidden=true;try{await api('/api/meals/'+selectedMeal.id,'PATCH',{title:$('mealName').value,revision:selectedMeal.revision});$('mealDialog').close();await refresh(true);$('status').textContent='Menu enregistré. Pensez à adapter les articles.';}catch(e){error('mealError',e);if(e.status===409){await refresh(true);selectedMeal={...state.meals.find(m=>m.id===selectedMeal.id)};}}finally{busy=false;$('mealSubmit').disabled=false;}};
+for(const id of ['meals','needs','recap','shopping'])$(id+'Tab').onclick=()=>showTab(id);
+$('add').onclick=()=>{if(state?.isAdmin)openItem(null);};$('retry').onclick=()=>refresh();
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{if(!busy)b.closest('dialog').close();});
+document.querySelectorAll('dialog').forEach(d=>d.addEventListener('cancel',e=>{if(busy)e.preventDefault();}));
+async function pollState(){if(pollRunning)return;pollRunning=true;try{await refresh();}finally{pollRunning=false;if(!document.hidden)poll=setTimeout(pollState,5000);}}
+void pollState();document.addEventListener('visibilitychange',()=>{clearTimeout(poll);if(!document.hidden)void pollState();});
+if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'read_family_list',description:'Lire les profils, choix, quantités individuelles et totaux par variante de la liste familiale.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:async()=>{if(!await refresh())throw new Error('La liste à jour est indisponible.');return JSON.parse(JSON.stringify(state));}})).catch(()=>{});}catch{}}
