@@ -43,3 +43,7 @@ Les choix existants sont proposés pendant la saisie ; chacun peut préciser une
 Dans l’espace organisateur, ouvrir « Repas » puis « + Ajouter un plat » sous le repas concerné. Un nouveau plat crée aussi un article dans « Mes quantités » et « Courses », avec l’unité et le rayon choisis. Un article existant peut être réutilisé à plusieurs repas sans doubler ses quantités, qui couvrent toujours tout le week-end.
 
 Chaque plat peut être renommé ou retiré du menu. Retirer un plat d’un repas conserve l’article et les quantités déjà saisies ; supprimer l’article des courses reste une action distincte de l’organisateur. Les nouveaux plats à préparer ne calculent pas automatiquement leurs ingrédients.
+
+## Apéro à partager
+
+Une rubrique commune pour tout le week-end propose chips, biscuits apéritifs, olives, saucisson, dés de fromage, tomates cerises, houmous, jus de fruits, sodas et eau pétillante. Chacun indique sa part dans « Mes quantités » : grammes pour les aliments, litres pour les boissons (25 cl = 0,25 L), zéro s’il n’en souhaite pas. Les totaux s’ajoutent aux courses par rayon. L’organisateur peut modifier, retirer ou ajouter des propositions. Aucune quantité n’est préremplie au nom de la famille.

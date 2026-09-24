@@ -4,6 +4,7 @@ const BACKEND='https://courses-week-end-famille.j-freaz91540.chatgpt.site';
 const API=location.origin===BACKEND?'':BACKEND;
 const categories=['Fruits et légumes','Frais','Viandes et poissons','Surgelés','Épicerie','Boulangerie','Boissons','Autres'];
 const days=[
+ {label:'Apéro à partager',apero:true,meals:[{id:'weekend-apero',label:'Pour tout le week-end · choisissez parmi les propositions'}]},
  {label:'Samedi 24 octobre',meals:[{id:'sat-dinner',label:'Dîner · pendant le jeu'}]},
  {label:'Dimanche 25 octobre',meals:[{id:'sun-breakfast',label:'Petit-déjeuner'},{id:'sun-lunch',label:'Déjeuner · hors courses',fixed:'Restaurant',detail:'L’Auberge des Roux.'},{id:'sun-dinner',label:'Dîner'}]},
  {label:'Lundi 26 octobre',meals:[{id:'mon-breakfast',label:'Petit-déjeuner'}]}
@@ -46,7 +47,7 @@ function renderProfiles(){
 }
 function renderMeals(){
  $('days').replaceChildren(...days.map(day=>{
-  const card=node('article',undefined,'day');card.append(node('h3',day.label));
+  const card=node('article',undefined,day.apero?'day apero':'day');card.append(node('h3',day.label));
   for(const slot of day.meals){
    const meal=node('div',undefined,'meal');meal.append(node('div',slot.label,'kind'));
    if(slot.fixed){meal.append(node('strong',slot.fixed),node('p',slot.detail,'muted'));card.append(meal);continue;}
@@ -63,14 +64,14 @@ function renderMeals(){
     }
     row.append(controls);meal.append(row);
    }
-   if(state.isAdmin){const add=node('button','+ Ajouter un plat','primary');add.setAttribute('aria-label',`Ajouter un plat : ${day.label}, ${slot.label}`);add.onclick=()=>openDishAdd(slot,day);meal.append(add);}
+   if(state.isAdmin){const add=node('button',day.apero?'+ Ajouter une proposition':'+ Ajouter un plat','primary');add.setAttribute('aria-label',`${day.apero?'Ajouter une proposition':'Ajouter un plat'} : ${day.label}, ${slot.label}`);add.onclick=()=>openDishAdd(slot,day);meal.append(add);}
    card.append(meal);
   }return card;
  }));
 }
 function openDishAdd(slot,day){
  selectedMeal={id:slot.id,label:`${day.label} · ${slot.label}`,requestId:crypto.randomUUID()};
- $('dishAddForm').reset();$('dishAddTitle').textContent='Ajouter un plat';$('dishAddMeal').textContent=selectedMeal.label;$('dishAddError').hidden=true;
+ $('dishAddForm').reset();$('dishAddTitle').textContent=day.apero?'Ajouter une proposition pour l’apéro':'Ajouter un plat';$('dishAddMeal').textContent=selectedMeal.label;$('dishAddError').hidden=true;
  const available=state.items.filter(i=>!(state.dishes||[]).some(d=>d.meal_id===slot.id&&d.item_id===i.id));
  const first=node('option','Créer un nouveau plat');first.value='';$('dishSource').replaceChildren(first,...available.map(i=>{const o=node('option',i.name);o.value=i.id;return o;}));
  $('dishUnit').value='pièce';$('dishCategory').value='Frais';updateDishSource();$('dishAddDialog').showModal();$('dishName').focus();
@@ -91,7 +92,10 @@ async function removeDish(dish){
 function renderNeeds(){
  $('needsItems').replaceChildren();
  if(!state.items.length){$('needsItems').append(node('p','L’organisateur peut ajouter les premiers articles.','emptybox'));return;}
- for(const category of categories){const items=state.items.filter(i=>i.category===category);if(!items.length)continue;const list=node('div',undefined,'list');list.append(node('h3',category));
+ const aperoIds=new Set((state.dishes||[]).filter(d=>d.meal_id==='weekend-apero').map(d=>d.item_id));
+ const groups=[{label:'Apéro à partager',items:state.items.filter(i=>aperoIds.has(i.id))},...categories.map(category=>({label:category,items:state.items.filter(i=>i.category===category&&!aperoIds.has(i.id))}))];
+ for(const group of groups){const items=group.items;if(!items.length)continue;const list=node('div',undefined,'list');list.append(node('h3',group.label));
+  if(group.label==='Apéro à partager')list.append(node('p','Indiquez votre part pour tout le week-end, pas celle du groupe. Les aliments sont en grammes, les boissons en litres (25 cl = 0,25 L). Mettez 0 pour les propositions qui ne vous tentent pas.','apero-hint'));
   for(const item of items){const saved=entry(item.id),row=node('div',undefined,'request-row'),description=node('div');description.append(node('strong',item.name),node('small',saved?`Demandé : ${requestLabel(saved,item)}`:'Pas encore renseigné'));if(item.note)description.append(node('small',item.note));const b=node('button',saved?'Modifier':'Renseigner','secondary');b.setAttribute('aria-label',`Quantité souhaitée : ${item.name}`);b.onclick=()=>openQuantity(item);row.append(description,b);list.append(row);}$('needsItems').append(list);
  }
 }
@@ -132,6 +136,9 @@ function openQuantity(item){
  if(!actorId||!personId){$('status').textContent='Choisissez votre prénom avant de renseigner une quantité.';$('actor').focus();return;}
  const saved=entry(item.id);selectedQuantity={itemId:item.id,profileId:personId,actorId,revision:saved?.revision||0,unit:item.unit};
  $('quantityVariant').value=saved?.variant||'';$('quantityVariant').required=!!item.choice_required&&(!saved||saved.amount_milli>0);$('variantLabel').textContent=item.choice_required?'Votre choix (sauf si quantité = 0)':'Choix ou préférence (facultatif)';$('sharingHint').hidden=item.unit!=='pizza';
+ $('quantityVariant').placeholder=item.unit==='pizza'?'Ex. : chèvre ou quatre fromages':'Ex. : nature, sans sucre, parfum préféré';
+ const apero=(state.dishes||[]).some(d=>d.meal_id==='weekend-apero'&&d.item_id===item.id);
+ $('portionHint').hidden=!apero;$('portionHint').textContent=item.unit==='L'?'Votre part en litres : 25 cl = 0,25 L ; 50 cl = 0,5 L.':item.unit==='g'?'Votre part en grammes, pas un nombre de paquets.':'Votre part pour tout le week-end, pas celle de tout le groupe.';
  const choices=new Set([...(item.unit==='pizza'?['Chèvre','Quatre fromages']:[]),...state.requests.filter(r=>r.item_id===item.id&&r.variant).map(r=>r.variant)]);
  $('variantSuggestions').replaceChildren(...[...choices].map(c=>{const o=node('option');o.value=c;return o;}));
  $('quantityTitle').textContent=item.name;$('quantityHint').textContent=`Pour ${personName(personId)} · saisi par ${personName(actorId)}`;$('quantityUnit').textContent=item.unit;$('quantityAmount').value=saved?saved.amount_milli/1000:'';$('quantityError').hidden=true;$('quantityDialog').showModal();$('quantityAmount').focus();
