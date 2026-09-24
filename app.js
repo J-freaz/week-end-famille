@@ -11,6 +11,43 @@ const days=[
 ];
 let state=null,busy=false,poll=null,pollRunning=false,selectedQuantity=null,selectedItem=null,selectedMeal=null,selectedDish=null,actorId='',personId='';
 try{actorId=localStorage.getItem('family-profile-id')||'';personId=actorId;}catch{}
+let soundEnabled=true,soundContext=null,soundLoad=null,soundSource=null;
+try{soundEnabled=localStorage.getItem('family-dragon-sound')!=='off';}catch{}
+function renderSound(){
+ $('soundToggle').textContent=soundEnabled?'🔊 Son activé':'🔇 Son coupé';
+ $('soundToggle').setAttribute('aria-pressed',String(soundEnabled));
+ $('soundToggle').setAttribute('aria-label',soundEnabled?'Couper le son Dracarys':'Activer le son Dracarys');
+ $('soundTest').disabled=!soundEnabled;
+}
+function prepareDragon(){
+ if(!soundEnabled)return null;
+ try{
+  const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return null;
+  if(!soundContext)soundContext=new Audio();
+  if(soundContext.state!=='running')soundContext.resume().catch(()=>{});
+  if(!soundLoad)soundLoad=fetch('dracarys.wav?v=1').then(r=>{if(!r.ok)throw new Error('Audio unavailable');return r.arrayBuffer();}).then(b=>soundContext.decodeAudioData(b)).catch(()=>{soundLoad=null;return null;});
+  return soundLoad;
+ }catch{return null;}
+}
+async function playDragon(test=false){
+ try{
+  const buffer=await prepareDragon();
+  if(!soundEnabled||document.hidden)return;
+  if(!buffer||soundContext?.state!=='running'){if(test)$('soundFeedback').textContent='Le son est indisponible sur ce navigateur. Les quantités restent enregistrables.';return;}
+  if(soundSource){try{soundSource.stop();}catch{}}
+  const source=soundContext.createBufferSource(),gain=soundContext.createGain();
+  source.buffer=buffer;gain.gain.value=.65;source.connect(gain);gain.connect(soundContext.destination);soundSource=source;
+  source.onended=()=>{source.disconnect();gain.disconnect();if(soundSource===source)soundSource=null;};
+  source.start();$('soundFeedback').textContent='🔥 Dracarys !';
+ }catch{if(test)$('soundFeedback').textContent='Le son est indisponible. Vous pouvez continuer à renseigner vos quantités.';}
+}
+$('soundToggle').onclick=()=>{
+ soundEnabled=!soundEnabled;try{localStorage.setItem('family-dragon-sound',soundEnabled?'on':'off');}catch{}
+ if(!soundEnabled&&soundSource){try{soundSource.stop();}catch{}soundSource=null;}
+ $('soundFeedback').textContent='';renderSound();
+};
+$('soundTest').onclick=()=>{void playDragon(true);};
+renderSound();
 const number=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3});
 function node(tag,text,className){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;}
 function amount(milli,unit){return number.format(milli/1000)+' '+unit+(['unité','pièce','pizza','tranche','baguette','paquet','boîte'].includes(unit)&&milli>=2000?'s':'');}
@@ -147,7 +184,8 @@ $('quantityAmount').oninput=()=>{$('quantityVariant').required=!!state?.items.fi
 function error(id,e){$(id).textContent=e.message;$(id).hidden=false;}
 $('quantityForm').onsubmit=async e=>{
  e.preventDefault();if(busy)return;busy=true;$('quantitySubmit').disabled=true;$('quantityError').hidden=true;
- try{await api('/api/requests','POST',{...selectedQuantity,amount:$('quantityAmount').value,variant:$('quantityVariant').value});$('quantityDialog').close();await refresh(true);$('status').textContent=`Quantité enregistrée pour ${personName(selectedQuantity.profileId)}. Le total des courses est mis à jour.`;}
+ prepareDragon();
+ try{await api('/api/requests','POST',{...selectedQuantity,amount:$('quantityAmount').value,variant:$('quantityVariant').value});void playDragon();$('quantityDialog').close();await refresh(true);$('status').textContent=`Quantité enregistrée pour ${personName(selectedQuantity.profileId)}. Le total des courses est mis à jour.`;}
  catch(e){error('quantityError',e);if(e.status===409){await refresh(true);const latest=entry(selectedQuantity.itemId,selectedQuantity.profileId);const item=state.items.find(i=>i.id===selectedQuantity.itemId);if(item){selectedQuantity.revision=latest?.revision||0;selectedQuantity.unit=item.unit;$('quantityUnit').textContent=item.unit;$('quantityError').textContent+=` Valeur actuelle : ${latest?requestLabel(latest,item):'non renseignée'}. Votre saisie est conservée ; vérifiez-la avant d’enregistrer.`;}}}
  finally{busy=false;$('quantitySubmit').disabled=false;}
 };

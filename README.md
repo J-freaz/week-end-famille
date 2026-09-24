@@ -47,3 +47,7 @@ Chaque plat peut être renommé ou retiré du menu. Retirer un plat d’un repas
 ## Apéro à partager
 
 Une rubrique commune pour tout le week-end propose chips, biscuits apéritifs, olives, saucisson, dés de fromage, tomates cerises, houmous, jus de fruits, sodas et eau pétillante. Chacun indique sa part dans « Mes quantités » : grammes pour les aliments, litres pour les boissons (25 cl = 0,25 L), zéro s’il n’en souhaite pas. Les totaux s’ajoutent aux courses par rayon. L’organisateur peut modifier, retirer ou ajouter des propositions. Aucune quantité n’est préremplie au nom de la famille.
+
+## Son de validation
+
+Une quantité sauvegardée déclenche un court « Dracarys ! » en voix synthétique avec un souffle de feu original. Le bouton « Son activé / Son coupé » mémorise le choix dans ce navigateur. « Tester Dracarys » permet de l’écouter sans modifier la liste. Aucun son au chargement ou après une erreur ; la sauvegarde reste utilisable si le navigateur bloque l’audio. Le fichier audio est hébergé avec le site et ne contient pas d’extrait de la série.
