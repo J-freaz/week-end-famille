@@ -37,3 +37,9 @@ Interface GitHub Pages : branche `main`, dossier racine. Adresse conservée : ht
 La sauvegarde et l’espace organisateur utilisent Sites, avec des sources et migrations dans le projet personnel dédié.
 
 Les choix existants sont proposés pendant la saisie ; chacun peut préciser une autre préférence sans créer d’article. L’organisateur décide quels articles exigent un choix. Une modification de choix remplace la précédente et remet l’achat à vérifier.
+
+## Gestion des repas
+
+Dans l’espace organisateur, ouvrir « Repas » puis « + Ajouter un plat » sous le repas concerné. Un nouveau plat crée aussi un article dans « Mes quantités » et « Courses », avec l’unité et le rayon choisis. Un article existant peut être réutilisé à plusieurs repas sans doubler ses quantités, qui couvrent toujours tout le week-end.
+
+Chaque plat peut être renommé ou retiré du menu. Retirer un plat d’un repas conserve l’article et les quantités déjà saisies ; supprimer l’article des courses reste une action distincte de l’organisateur. Les nouveaux plats à préparer ne calculent pas automatiquement leurs ingrédients.

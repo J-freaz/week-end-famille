@@ -8,7 +8,7 @@ const days=[
  {label:'Dimanche 25 octobre',meals:[{id:'sun-breakfast',label:'Petit-déjeuner'},{id:'sun-lunch',label:'Déjeuner · hors courses',fixed:'Restaurant',detail:'L’Auberge des Roux.'},{id:'sun-dinner',label:'Dîner'}]},
  {label:'Lundi 26 octobre',meals:[{id:'mon-breakfast',label:'Petit-déjeuner'}]}
 ];
-let state=null,busy=false,poll=null,pollRunning=false,selectedQuantity=null,selectedItem=null,selectedMeal=null,actorId='',personId='';
+let state=null,busy=false,poll=null,pollRunning=false,selectedQuantity=null,selectedItem=null,selectedMeal=null,selectedDish=null,actorId='',personId='';
 try{actorId=localStorage.getItem('family-profile-id')||'';personId=actorId;}catch{}
 const number=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3});
 function node(tag,text,className){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;}
@@ -47,10 +47,46 @@ function renderProfiles(){
 function renderMeals(){
  $('days').replaceChildren(...days.map(day=>{
   const card=node('article',undefined,'day');card.append(node('h3',day.label));
-  for(const slot of day.meals){const saved=state.meals.find(m=>m.id===slot.id),meal=node('div',undefined,'meal');meal.append(node('div',slot.label,'kind'),node('strong',slot.fixed||saved?.title||'À décider'));if(slot.detail)meal.append(node('p',slot.detail,'muted'));
-   if(state.isAdmin&&!slot.fixed){const b=node('button','Modifier','secondary');b.setAttribute('aria-label',`Modifier : ${day.label}, ${slot.label}`);b.onclick=()=>{selectedMeal={...saved};$('mealTitle').textContent=`${day.label} · ${slot.label}`;$('mealName').value=saved.title;$('mealError').hidden=true;$('mealDialog').showModal();};meal.append(b);}card.append(meal);
+  for(const slot of day.meals){
+   const meal=node('div',undefined,'meal');meal.append(node('div',slot.label,'kind'));
+   if(slot.fixed){meal.append(node('strong',slot.fixed),node('p',slot.detail,'muted'));card.append(meal);continue;}
+   const dishes=(state.dishes||[]).filter(d=>d.meal_id===slot.id);
+   if(!dishes.length)meal.append(node('p','Aucun plat prévu pour ce repas.','muted'));
+   for(const dish of dishes){
+    const row=node('div',undefined,'dish'),controls=node('div',undefined,'dish-actions');row.append(node('strong',dish.title));
+    const item=state.items.find(i=>i.id===dish.item_id);
+    if(item){const qty=node('button','Mes quantités','secondary');qty.setAttribute('aria-label','Renseigner mes quantités : '+dish.title);qty.onclick=()=>openQuantity(item);controls.append(qty);}
+    if(state.isAdmin){
+     const edit=node('button','Modifier','secondary');edit.setAttribute('aria-label','Modifier le plat : '+dish.title);edit.onclick=()=>openDishEdit(dish);
+     const remove=node('button','Retirer','secondary');remove.setAttribute('aria-label','Retirer du repas : '+dish.title);remove.onclick=()=>removeDish(dish);
+     controls.append(edit,remove);
+    }
+    row.append(controls);meal.append(row);
+   }
+   if(state.isAdmin){const add=node('button','+ Ajouter un plat','primary');add.setAttribute('aria-label',`Ajouter un plat : ${day.label}, ${slot.label}`);add.onclick=()=>openDishAdd(slot,day);meal.append(add);}
+   card.append(meal);
   }return card;
  }));
+}
+function openDishAdd(slot,day){
+ selectedMeal={id:slot.id,label:`${day.label} · ${slot.label}`,requestId:crypto.randomUUID()};
+ $('dishAddForm').reset();$('dishAddTitle').textContent='Ajouter un plat';$('dishAddMeal').textContent=selectedMeal.label;$('dishAddError').hidden=true;
+ const available=state.items.filter(i=>!(state.dishes||[]).some(d=>d.meal_id===slot.id&&d.item_id===i.id));
+ const first=node('option','Créer un nouveau plat');first.value='';$('dishSource').replaceChildren(first,...available.map(i=>{const o=node('option',i.name);o.value=i.id;return o;}));
+ $('dishUnit').value='pièce';$('dishCategory').value='Frais';updateDishSource();$('dishAddDialog').showModal();$('dishName').focus();
+}
+function updateDishSource(){
+ const existing=!!$('dishSource').value;$('newDishFields').hidden=existing;$('dishName').required=!existing;
+ $('dishAddHint').textContent=existing?'Cet article sera aussi affiché à ce repas. Ses quantités restent communes pour tout le week-end, sans doublon.':'Ce plat sera ajouté au menu, à « Mes quantités » et aux courses. Pour une préparation maison, les ingrédients restent à ajuster séparément.';
+}
+function openDishEdit(dish){
+ selectedDish={...dish};$('mealTitle').textContent='Modifier le plat';$('mealName').value=dish.title;$('mealError').hidden=true;
+ $('dishEditHint').textContent=dish.item_id?'Le nom sera aussi modifié dans les quantités et les autres repas utilisant cet article. Les quantités déjà saisies sont conservées.':'Ce changement concerne le menu. Pour proposer un plat avec sa propre quantité, utilisez « Ajouter un plat ».';
+ $('mealDialog').showModal();
+}
+async function removeDish(dish){
+ if(busy||!confirm(`Retirer « ${dish.title} » de ce repas ? Les articles et les quantités déjà saisis restent dans la liste de courses.`))return;
+ busy=true;try{await api('/api/meal-dishes/'+dish.id,'DELETE',{revision:dish.revision});await refresh(true);$('status').textContent='Plat retiré de ce repas. Les quantités existantes sont conservées.';}catch(e){$('status').textContent=e.message;await refresh(true);}finally{busy=false;}
 }
 function renderNeeds(){
  $('needsItems').replaceChildren();
@@ -126,7 +162,20 @@ $('itemForm').onsubmit=async e=>{
  catch(e){error('itemError',e);if(e.status===409){await refresh(true);selectedItem={...state.items.find(i=>i.id===selectedItem.id)};}}finally{busy=false;$('itemSubmit').disabled=false;}
 };
 async function removeItem(item){if(busy||!confirm(`Supprimer « ${item.name} » et ses quantités individuelles de la liste ?`))return;busy=true;try{await api('/api/items/'+item.id,'DELETE',{revision:item.revision});await refresh(true);$('status').textContent='Article supprimé.';}catch(e){$('status').textContent=e.message;await refresh(true);}finally{busy=false;}}
-$('mealForm').onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;$('mealSubmit').disabled=true;$('mealError').hidden=true;try{await api('/api/meals/'+selectedMeal.id,'PATCH',{title:$('mealName').value,revision:selectedMeal.revision});$('mealDialog').close();await refresh(true);$('status').textContent='Menu enregistré. Pensez à adapter les articles.';}catch(e){error('mealError',e);if(e.status===409){await refresh(true);selectedMeal={...state.meals.find(m=>m.id===selectedMeal.id)};}}finally{busy=false;$('mealSubmit').disabled=false;}};
+$('dishSource').onchange=updateDishSource;
+$('dishAddForm').onsubmit=async e=>{
+ e.preventDefault();if(busy)return;busy=true;$('dishAddSubmit').disabled=true;$('dishAddError').hidden=true;
+ const itemId=$('dishSource').value,data={requestId:selectedMeal.requestId};
+ if(itemId)data.itemId=itemId;else Object.assign(data,{title:$('dishName').value.trim(),unit:$('dishUnit').value,category:$('dishCategory').value,choiceRequired:$('dishChoice').checked});
+ try{await api('/api/meals/'+selectedMeal.id+'/dishes','POST',data);$('dishAddDialog').close();await refresh(true);$('status').textContent='Plat ajouté au repas et disponible dans les quantités de chacun.';}
+ catch(e){error('dishAddError',e);if(e.status===409)await refresh(true);}finally{busy=false;$('dishAddSubmit').disabled=false;}
+};
+$('mealForm').onsubmit=async e=>{
+ e.preventDefault();if(busy)return;busy=true;$('mealSubmit').disabled=true;$('mealError').hidden=true;
+ try{await api('/api/meal-dishes/'+selectedDish.id,'PATCH',{title:$('mealName').value,revision:selectedDish.revision,itemRevision:selectedDish.item_revision});$('mealDialog').close();await refresh(true);$('status').textContent='Plat modifié. Les quantités existantes sont conservées.';}
+ catch(e){error('mealError',e);if(e.status===409){await refresh(true);const latest=(state.dishes||[]).find(d=>d.id===selectedDish.id);if(latest){selectedDish={...latest};$('mealError').textContent+=` Nom actuel : ${latest.title}. Vérifiez votre saisie avant de valider à nouveau.`;}}}
+ finally{busy=false;$('mealSubmit').disabled=false;}
+};
 for(const id of ['meals','needs','recap','shopping'])$(id+'Tab').onclick=()=>showTab(id);
 $('add').onclick=()=>{if(state?.isAdmin)openItem(null);};$('retry').onclick=()=>refresh();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{if(!busy)b.closest('dialog').close();});
