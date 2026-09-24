@@ -50,4 +50,4 @@ Une rubrique commune pour tout le week-end propose chips, biscuits apéritifs, o
 
 ## Son de validation
 
-Une quantité sauvegardée déclenche le court « Dracarys » extrait de la vidéo de référence fournie par l’organisateur. Le bouton « Son activé / Son coupé » mémorise le choix dans ce navigateur. « Tester Dracarys » permet de l’écouter sans modifier la liste. Aucun son au chargement ou après une erreur ; la sauvegarde reste utilisable si le navigateur bloque l’audio. Le fichier audio est hébergé avec le site : extrait de 13,00 à 14,30 secondes de [Daenerys’ Special Sound Effect — KidKreativ](https://www.youtube.com/watch?v=ZyZJqMPSDh0). Seuls le volume et les raccords aux extrémités ont été ajustés ; la voix et sa hauteur sont conservées.
+Une quantité sauvegardée déclenche le fichier MP3 fourni par l’organisateur le 24 septembre 2026, conservé intégralement sans réencodage ni découpage. Le bouton « Son activé / Son coupé » mémorise le choix dans ce navigateur. « Tester Dracarys » permet de l’écouter sans modifier la liste. Aucun son au chargement ou après une erreur ; la sauvegarde reste utilisable si le navigateur bloque l’audio.
