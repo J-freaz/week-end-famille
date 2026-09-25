@@ -178,9 +178,9 @@ function openQuantity(item){
  $('portionHint').hidden=!apero;$('portionHint').textContent=item.unit==='L'?'Votre part en litres : 25 cl = 0,25 L ; 50 cl = 0,5 L.':item.unit==='g'?'Votre part en grammes, pas un nombre de paquets.':'Votre part pour tout le week-end, pas celle de tout le groupe.';
  const choices=new Set([...(item.unit==='pizza'?['Chèvre','Quatre fromages']:[]),...state.requests.filter(r=>r.item_id===item.id&&r.variant).map(r=>r.variant)]);
  $('variantSuggestions').replaceChildren(...[...choices].map(c=>{const o=node('option');o.value=c;return o;}));
- $('quantityTitle').textContent=item.name;$('quantityHint').textContent=`Pour ${personName(personId)} · saisi par ${personName(actorId)}`;$('quantityUnit').textContent=item.unit;$('quantityAmount').value=saved?saved.amount_milli/1000:'';$('quantityError').hidden=true;$('quantityDialog').showModal();$('quantityAmount').focus();
+ $('quantityTitle').textContent=item.name;$('quantityHint').textContent=`Pour ${personName(personId)} · saisi par ${personName(actorId)}`;$('quantityUnit').textContent=item.unit;$('quantityAmount').value=saved?String(saved.amount_milli/1000).replace('.',','):'';$('quantityError').hidden=true;$('quantityDialog').showModal();$('quantityAmount').focus();
 }
-$('quantityAmount').oninput=()=>{$('quantityVariant').required=!!state?.items.find(i=>i.id===selectedQuantity?.itemId)?.choice_required&&Number($('quantityAmount').value)>0;};
+$('quantityAmount').oninput=()=>{$('quantityVariant').required=!!state?.items.find(i=>i.id===selectedQuantity?.itemId)?.choice_required&&Number($('quantityAmount').value.replace(',','.'))>0;};
 function error(id,e){$(id).textContent=e.message;$(id).hidden=false;}
 $('quantityForm').onsubmit=async e=>{
  e.preventDefault();if(busy)return;busy=true;$('quantitySubmit').disabled=true;$('quantityError').hidden=true;
